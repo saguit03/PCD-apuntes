@@ -155,46 +155,123 @@ Son necesarias nuevas primitivas: las **primitivas de sincronización**.
 
 ### Características de los mecanismos de paso de mensaje
 
-¿Identificamos emisor y receptor en el proceso de comunicación?
+#### ¿Identificamos emisor y receptor en el proceso de comunicación?
 
-- Comunicación directa.
-  - Simétrica (ambos están identificados). La ventaja es la seguridad (los procesos están perfectamente identificados), pero modificar el nombre de un proceso implica modificar el programa.  
+- **Comunicación directa**.
+  - **Simétrica** (ambos están identificados). La ventaja es la seguridad (los procesos están perfectamente identificados), pero modificar el nombre de un proceso implica modificar el programa.  
     `SEND (A, message)`. Send a message to process A.  
     `RECEIVE (B, message)`. Receive a message from process B.
-  - Asimétrica (el emisor identifica al receptor).  
+  - **Asimétrica** (el emisor identifica al receptor).  
     `SEND (A, message)`. Send a message to process A.  
     `RECEIVE (Id, message)`. Receive a message (in Id the system would indicate the identification of the sender).
-- Comunicación indirecta.
-  - Puertos (1 a 1, 1 a n o n a 1).
-  - Canales (comunicación síncrona o 1 a 1).
+- **Comunicación indirecta**.  
+  `SEND (mailbox, message)`. Send a message to the mailbox  
+  `RECEIVE (mailbox, message)`. Receive a message from the mailbox
+  - **Buzón** (mailbox)
+    - 1 a 1
+    - 1 a n
+    - n a 1 (puerto)
+    - n a n
+  - **Canales**
+    - fuertemente tipados
+    - comunicación síncrona
+    - 1 a 1
 
-Tipo de comunicación (síncrona, asíncrona, bloqueante, etc.).
+#### Tipo de comunicación
 
-- //TODO
+- Síncrona (rendezvous y extended rendezvous)
+- Asíncrona
+- Paso de mensajes futuro (Future message passing)
 
-Canal (o medio) de comunicación.
+#### Canal (o medio) de comunicación
 
-- //TODO
+- **Flujo**
+  - unidireccional (Sockets UDP, comunicación asíncrona)
+  - bidireccional (Sockets TCP, comunicación RPC)
+- **Capacidad** del canal
+  - cero (comunicación síncrona)
+  - finito (comunicación asíncrona)*
+  - infinito (comunicación asíncrona)*  
+  *buffer asociado al canal
+- **Longitud** de los mensajes
+  - fija (fragmentación provoca desorden)
+  - variable (message = head + body)
+- Canales con o sin **tipo**.
+- **Parámetros** pasados
+  - por referencia (siempre en sistemas distribuidos)
+  - por copia (implica compartición de memoria, por lo que nunca se usa en distribuida; menos seguro en concurrencia, pero más eficiente)
+- Transmisión de **errores**.
 
 ### Paso de mensaje síncrono
 
-//TODO
+Se produce una cita, rendezvous (aka synchronous message passing): la comunicación no empieza hasta que ambos, emisor y receptor, estén preparados.
 
 ### Espera selectiva
 
-//TODO
+#### Select sentence: Dijkstra, 1975
+
+```
+select
+RECEIVE (process1, message);
+sentences;
+or
+RECEIVE (process2, message);
+sentences
+or
+...
+or
+RECEIVE (process3, message);
+sentences;
+end select;
+```
+
+#### Selective waiting with guards
+
+```
+...
+select
+when condition1 =>
+RECEIVE(process1, message);
+sentences;
+or
+when condition2 =>
+RECEIVE(process2, message);
+sentences;
+or
+...
+or
+when conditionN =>
+RECEIVE(processN, message);
+sentences;
+end select;
+...
+
+```
+
+Las condiciones solo se evalúan cuando llegan a SELECT.
 
 ### Paso de mensaje asíncrono
 
-//TODO
+El emisor envía los datos cuando él quiera y el receptor los recibe cuando le venga en gana.
 
-### Invocación remota
+### Invocación remota aka extended-rendezvous
 
-//TODO
+La comunicación Extended-Rendezvous es una extensión de la comunicación Rendezvous que permite que más de dos procesos se comuniquen entre sí. En este tipo de comunicación, el emisor espera la recepción del mensaje por parte del receptor y una respuesta determinada.  
+#### Remote invocation
+
+El término remoto se refiere a otro **proceso**. El cliente y el servidor pueden estar en el mismo contexto y máquina.
+
+#### RPC (Remote Procedure Call)
+
+El término remoto se refiere a otro **procesador**. El cliente y el servidor están en distintas máquinas (distribuidas). Por ejemplo: Java RMI y gRPC.  
+
+Ambos son modelos de comunicación síncronos, su flujo es bidireccional y son buenos para aplicaciones del estilo cliente/servidor.
 
 ### Sentencia SELECT
 
-//TODO
+Communication alternatives are modelled using `Selectable` objects. `MailBox`, `Channel` and `EntryPoint` classes inherits from `Selectable`.  
+The mode of use is as follows. After creating an object of type `Selector`, you attach to it objects of type `Selectable` and finally invokes any of the various selection methods available.  
+To add the different communication alternatives to a select, we will use the `addSelectable (Selectable s, boolean sender)` method that will allow us, thanks to the sender parameter, to indicate if the added alternative will be used to send (true) or to receive messages (false). Once this is done, before invoking any of the selection methods, we can assign a boolean value to the guard that each communication alternative has associated. If we do not do that, it is assumed that the value assigned is true.
 
 ## Tema 6. Programación con Sockets
 
@@ -268,18 +345,18 @@ Se envían datagramas sin conexión, de forma rápida y sin asentimiento. La com
   - En la recepción se debe especificar:
     - Un **buffer** donde almacenar los datos recibidos (array de bytes).
     - Un entero indicando el tamaño máximo de los datos a recibir.
-    -   ```DatagramPacket dp=new DatagramPacket(buffer, tam);```
+    ```DatagramPacket dp=new DatagramPacket(buffer, tam);```
   - En el envío se debe especificar:
     - El buffer de datos a enviar.
     - El tamaño de los datos a enviar.
     - Dirección (address).
-    - Puerto.
-    - ```DatagramPacket dp=new DatagramPacket(buffer,tam,direcc,puerto);```
+    - Puerto.  
+    ```DatagramPacket dp=new DatagramPacket(buffer,tam,direcc,puerto);```
 - `DatagramSocket`. Maneja sockets UDP, permitiendo enviar y recibir datos (datagrams) por la red.
-  - En la recepción se ha de especificar el puerto en el que las peticiones serán escuchadas.
-  - ```DatagramSocket ds_recep=new DatagramSocket(1234);```
-  - En el envío no es necesario especificar parámetros, porque ya están en el mismo datagrama.
-  - ```DatagramSocket ds_envi=new DatagramSocket();```
+  - En la recepción se ha de especificar el puerto en el que las peticiones serán escuchadas.  
+  ```DatagramSocket ds_recep=new DatagramSocket(1234);```
+  - En el envío no es necesario especificar parámetros, porque ya están en el mismo datagrama.  
+  ```DatagramSocket ds_envi=new DatagramSocket();```
 
 ### ¿TCP o UDP?
 
