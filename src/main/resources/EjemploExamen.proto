@@ -1,0 +1,16 @@
+
+syntax = "proto3";
+
+option java_package = "grpc";
+
+service Promocion {
+  rpc esPromocion (ExamenRequest) returns (ExamenReply) {}
+}
+
+message ExamenRequest {
+  string name = 1;
+}
+
+message ExamenReply {
+  string message = 1;
+}
