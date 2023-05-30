@@ -426,9 +426,8 @@ public class Buffer {
             while (numActual == capacidad) lleno.await();
             numActual++;
             vacio.signal();
-        } finally {
+        } finally
             candado.unlock();
-        }
     }
 
     @Override
@@ -438,9 +437,8 @@ public class Buffer {
             while (numActual == 0) vacio.await();
             numActual--;
             lleno.signal();
-        } finally {
+        } finally 
             candado.unlock();
-        }
     }
 }
 ```
@@ -504,9 +502,8 @@ public class SemaforoParaMoteros {
         
         tropaMoteros = new Semaphore[numeroMoteros];
 
-        for (int i = 0; i < numeroMoteros; i++) {
+        for (int i = 0; i < numeroMoteros; i++) 
             tropaMoteros[i] = new Semaphore(0);
-        }
     }
 
     public void esperaAlResto(int i) {
@@ -588,9 +585,23 @@ public class Contenedor_LinkedBlockingQueue {
 }
 ```
 
-### Mecanismos avanzados de sincronización
+## Mecanismos avanzados de sincronización
+
+### Executor
+
+Un executor maneja un número (fijo o variable) de hilos. Le enviamos **tareas** para que las asocie con hilos (si están disponibles). Estas tareas deben implementar `Runnable` o `Callable`.
 
 ```java
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+
+ThreadPoolExecutor executor;
+executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(n);
+// executor = (ThreadPoolExecutor) Executors.newCachedThreadPool();
+
+executor.execute(() -> {
+    //whatever
+});
 
 ```
 
