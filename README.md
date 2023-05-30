@@ -695,6 +695,7 @@ public static void Version6ForkJoin(List<Pedido> lp) {
       e.printStackTrace();
   }
 }
+```
 
 ## Mecanismos avanzados de sincronización
 
