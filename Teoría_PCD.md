@@ -5,8 +5,7 @@
 ## Tema 1. Conceptos fundamentales
 
 En los años 60 surgieron los primeros sistemas operativos. El **Mainframe** implementaba concurrencia a nivel ensamblador (en el SO), a lo que luego se sumaron IBM, General Electric, HoneyWell, Siemens y Telefunken.  
-
-En 1972, apareció Concurrent Pascal.  
+En 1972, apareció Concurrent Pascal, que abrió la puerta a otros lenguajes de alto nivel que incorporaban la concurrencia.  
 Esto fue el auge de la programación concurrente:
 
 - Concepto de **thread** o hilo.
@@ -39,8 +38,10 @@ Si dos procesos se ejecutan simultáneamente es programación paralela. La concu
 
 ### Sistema
 
-- Monoprocesador
-- Multiprocesador (memoria compartida o distribuida)
+- Monoprocesador. La **multiprogramación** permite aprovechar ciclos de CPU mientras otros procesos hacen operaciones de entrada/salida, proporcionar un servicio interactivo a múltiples usuarios y dar una solución adecuada a problemas concurrentes. Todos los procesos comparten la **misma memoria**, por lo que su forma de sincronizarse y comunicarse es mediante el uso de **variables compartidas**.
+- Multiprocesador.
+  - Sistemas fuertemente acoplados. Tanto procesadores como otros dispositivos (incluida memoria) están conectados a un bus, por lo que **comparten la misma memoria**. Cada procesador puede tener su propia memoria local, pero la comunicación se realiza mediante variables compartidas.
+  - Sistemas débilmente acoplados. No hay memoria compartida, sino que cada procesador está conectado con los demás mediante algún tipo de **enlace de comunicación**. Por ejemplo, los sistemas distribuidos están formados por nodos. Cada nodo puede ser a su vez mono o multiprocesador.
 
 ### Programa
 
@@ -53,43 +54,226 @@ Si dos procesos se ejecutan simultáneamente es programación paralela. La concu
 - extends Thread
 - implements Runnable
 
+### Características de los sistemas concurrentes
+
+- Orden parcial de las instrucciones.
+- Indeterminismo.
+
 ### Problemas inherentes a la programación concurrente
 
-- Exclusión mutua
-- Sección crítica
-- Condición de sincronización
+- **Exclusión mutua**. Solo uno de los procesos está en la sección crítica en un instante dado.
+- **Sección crítica**. La porción de código que debe ejecutarse de forma indivisible.
+- **Condición de sincronización**. Un estado en el que un proceso no puede hacer una determinada acción hasta que no cambie su estado.
 
 ### Corrección de programas concurentes
 
 #### Problemas de seguridad
 
-- Exclusión mutua.
-- Condición de sincronización.
-- Interbloqueo (deadlock).
+Las **propiedades de seguridad** se aseguran de que nada malo va a pasar durante la ejecución del programa.
+
+- **Exclusión mutua**. Hay que garantizar que si un proceso adquiere un recurso, los demás deberán esperar a que sea liberado. De lo contrario, el resultado puede ser imprevisto.
+- **Condición de sincronización**. Hay situaciones en las que un proceso debe esperar por la ocurrencia de un evento para poder seguir ejecutándose. Hay que garantizar que el proceso no prosigue hasta que no se produce el evento.
+- **Interbloqueo** (**deadlock**). Se produce interbloqueo cuando todos los procesos están esperando por un evento que nunca se producirá. También se conoce con el nombre de **abrazo mortal**.
 
 #### Problemas de vivacidaz
 
-- Interbloqueo activo (livelock)
-- Inanición (starvation)
+Las **propiedades de viveza** se aseguran de que algo bueno pasará eventualmente durante la ejecución del programa.
+
+- **Interbloqueo activo (livelock)**. Se produce al ejecutar una serie de instrucciones sin hacer ningún progreso. Es como cuando vas caminando por la calle y te apartas a un lado porque viene una persona de frente, pero esa persona se aparta hacia el mismo lado que tú; entonces ambos os apartáis hacia el otro lado, y así hasta que finalmente os ponéis de acuerdo para pasar.
+- **Inanición (starvation)**. El sistema en su conjunto hace progresos, pero algunos procesos no avanzan porque no se les otorga el tiempo de procesador necesario para avanzar.
 
 ### Condiciones de Bernstein
 
+1. $L(Si) \cap E(Sj) = \varnothing$
+2. $E(Si) \cap L(Sj) = \varnothing$
+3. $E(Si) \cap E(Sj) = \varnothing$
+
 Lectura y escritura no se pueden ejecutar concurrentemente. Escritura y escritura, tampoco.
 
-## Tema 2. Solución a la condición de sincronización
+## Tema 2. Primeras soluciones
 
-Soluciones a la exclusión mutua
+### Soluciones a la exclusión mutua
+
+Los protocolos de entrada y de salida son porciones de código que deben cumplir las siguientes condiciones para resolver satisfactoriamente el problema de la exclusión mutua:
+
+- Exclusión mutua.
+- Limitación en la espera.
+- Progreso en la ejecución.
+
+Es necesaria también la ejecución rápida, porque es código que tenemos que ejecutar frecuentemente.
+
+Los mecanismos que disponemos para implementar los distintos tipos de sincronización son los siguientes:
+
+- Inhibición de las interrupciones.
+- Soluciones basadas en variables compartidas.
+  - Espera ocupada (busy waiting).
+  - Semáforos.
+  - Regiones críticas.
+  - Regiones críticas condicionales.
+  - Monitores.
+- Soluciones basadas en el paso de mensajes.
+  - Operaciones de paso de mensajes send/receive.
+  - Llamadas a procedimientos remotos.
+  - Invocaciones remotas.
 
 ### Soluciones Software
 
-1. En ausencia de pugna, un proceso que quiera entrar debe hacerlo.
-2. No debe producirse deadlock.
-3. No puede haber postergación indefinida (un proceso entrará en un tiempo finito).
+Las únicas operaciones atómicas que se consideran son las instrucciones de bajo nivel para leer y almacenar (L/S) de/en direcciones de memoria. Si dos instrucciones de este tipo se produjeran simultáneamente, el resultado equivaldría a la ejecución secuencial en un orden desconocido.
 
-- Algoritmo de Peterson
-- Algoritmo de Dekker
+#### Algoritmos no eficientes
+
+##### Primer intento (no exclusión mutua)
+
+```pseudo
+  process P0
+repeat
+  /*protocolo de entrada*/
+  a) while v=scocupada do;
+  b) v: =scocupada;
+  /*ejecuta la sección crítica*/
+  c) Sección Crítica0;
+  /*protocolo de salida*/
+  d) v: =sclibre;
+  Resto0
+forever
+``` 
+
+Esta solución no es adecuada, ya que dos procesos pueden ejecutar el `while` antes de ejecutar `v: =scocupada;`, lo que provocaría que ambo entren en la sección crítica. **No garantiza la exclusión mutua**.
+
+##### Segundo intento (alternancia)
+
+```pseudo
+  process P0
+repeat
+  while turno=1 do;
+  Sección Crítica0;
+  turno: = 1;
+  Resto0
+forever
+```
+
+Garantiza la exclusión mutua, pero provoca que el derecho de usar la sección crítica sea alternativo entre los procesos. Esta alternancia no satisface la condición de progreso en la ejecución.
+
+##### Tercer intento (no exclusión mutua)
+
+```pseudo
+  process P0
+repeat
+  a) while C1=enSC do;
+  b) C0: =enSC;
+  c) Sección Crítica0;
+  d) C0: =restoproceso;
+  Resto0
+forever
+```
+
+No garantiza la exclusión mutua.
+
+##### Cuarto intento (espera infinita)
+
+```pseudo
+  process P0
+repeat
+  C0: =quiereentrar;
+  while C1=quiereentrar do;
+  Sección Crítica0;
+  C0: =restoproceso;
+  Resto0
+forever
+```
+
+Satisface la exclusión mutua, pero produce un problema de progreso en la ejecución: si ambos procesos indican que desean entrar a la sección crítica, se quedarán en un bucle infinito (livelock).
+
+##### Quinto intento (cortesía)
+
+```pseudo
+  process P0
+repeat
+  C0: =quiereentrar;
+  while C1=quiereentrar do
+  begin
+    C0: =restoproceso;
+    (*hacer algo durante
+    unos momentos*)
+    C0: =quiereentrar
+  end;
+  Sección Crítica0;
+  C0: =restoproceso;
+  Resto0
+forever
+```
+
+Satisface la exclusión mutua y no produce espera ilimitada, porque existe una esperanza de que se salga de esta situación, pero **no se asegura que se acceda a la sección crítica en un tiempo finito**.
+
+#### Algoritmo de Dekker
+
+```pseudo
+  process P0
+repeat
+  C0: =quiereentrar;
+  while C1=quiereentrar do
+    if turno=1 then
+    begin
+      C0: =restoproceso;
+      while turno=1 do;
+      C0: =quiereentrar
+    end;
+  Sección Crítica 0;
+  turno: =1;
+  C0: =restoproceso;
+  Resto0
+forever
+```
+
+Combina la alternancia y la cortesía, satisfaciendo así las tres condiciones.
+
+#### Algoritmo de Peterson
+
+```pseudo
+  process P0
+repeat
+  C0: =quiereentrar;
+  turno: =1;
+  while (C1=quiereentrar) and (turno=1) do;
+  Sección Crítica0;
+  C0: =restoproceso;
+  Resto0
+forever
+```
+
+Es una forma más sencilla y elegante de resolver el problema.
+
+#### Algoritmo de Lamport (algoritmo de la panadería)
+
+Soluciona el problema de la exclusión mutua para n procesos y se puede usar en entornos distribuidos donde un proceso puede acceder a la memoria de otro proceso solo para leer.  
+Se basa en las tiendas donde, al entrar, cada cliente recibe un número. El cliente con el número más bajo es el primero en ser servido, pero este algoritmo no se puede garantizar que dos procesos no reciban el mismo número.
+
+```pseudo
+  process Pi
+repeat
+  C[i]: =cognum;
+  numero[i]: =1+max(numero[0],...,numero[n–1]);
+  C[i]: =nocognum;
+  for j: =0 to n–1 do
+    begin
+      while (C[j]=cognum) do;
+      while ((numero[j]Ç0) and ((numero[i],i)>(numero[j],j))) do;
+    end;
+  Sección Críticai;
+  numero[i]: =0;
+  Restoi
+forever
+```
+
+- Se verifica la exclusión mutua por el segundo while: los siguientes procesos sacarán un número mayor que el actual y no pasarían.
+- Se garantiza el progreso en la ejecución según el orden en el que se toma el número.
+- Asegura limitación en la espera.  
+
+Un inconveniene de este algoritmo es que los números pueden aumentar en la ejecución, lo que puede sobrepasar la capacidad de cualquier tipo de datos; por lo que este algoritmo no debe ser usado en modelos de alto grado de concurrencia.
 
 ### Soluciones Hardware
+
+Se utilizan instrucciones especializadas que llevan a cabo una serie de acciones de forma indivisible, como leer y escribir, intercambiar el contenido de dos posiciones de memoria, etc.
 
 - exchange
 - getAndSet
@@ -97,11 +281,26 @@ Soluciones a la exclusión mutua
 - test&Set
 - testAndSet(a, b). a = b, b = true
 
+#### Instrucción de decremento/incremento
+
+Decrementa/Incrementa en 1 el contenido de m y copia el resultado en r de forma atómica: `subc(r, m)` y `addc(r, m)`.  
+Si un proceso permanece mucho tiempo en la sección crítica, la variable m va a actualizarse continuamente, lo que puede producir **desbordamiento**: no satisface la condición de espera limitada.
+
+#### Instrucción de testset
+
+`testset(m)`
+
+- Comprueba el valor de la variable m.
+- Si es 0, lo cambia por 1 y devuelve true.
+- En otro caso, no cambia el valor de m y devuelve false.  
+
+Por sí sola no satisface la condición de espera limitada, pero se puede utilizar en otros algoritmos que sí satisfacen las tres condiciones.
+
 ### Otras soluciones
 
 Deshabilitación de instrucciones
 
-### Conclusiones tema 1
+### Conclusiones tema 2
 
 Ninguna construcción software que conocemos solucionan la exclusión mutua y la condición de sincronización, y encima contienen espera ocupada o  espera activa: **spinklock** (tratamiento a muy bajo nivel).  
 Las instrucciones atómicas a nivel hardware tampoco ayudan demasiado.  
@@ -111,25 +310,294 @@ Son necesarias nuevas primitivas: las **primitivas de sincronización**.
 
 ### Variables atómicas
 
-//TODO
+Hay clases en Java como `AtomicInteger` que implementa operaciones que se ejecutan de forma atómica (indivisible). Están en el paquete `java.util.concurrent.atomic`.
+
+```java
+public class ContadorAtomico {
+  AtomicInteger contador = new AtomicInteger();
+
+  public ContadorAtomico() { contador.set(0); }
+
+  public void inc() { contador.incrementAndGet(); }
+
+  public int get() { return contador.get(); }
+}
+```
 
 ### Cerrojos
 
-//TODO
+```java
+public class Contador {
+  int contador;
+  Lock l = new ReentrantLock();
+
+  public Contador() { contador = 0; }
+
+  public void inc() {
+    l.lock();
+    contador++;
+    try {
+      l.unlock(); }
+      finally { l.unlock(); }
+  }
+
+  public int get() { return contador; }
+}
+```
 
 ### Primitivas propias de Java
 
-//TODO
+Se puede sincronizar el método entero.
 
-//TODO
+```java
+public synchronized void metodo() { }
+```
+
+Podemos sincronizar solo una parte del código sobre la clase que implementa el método.
+
+```java
+public void metodo() {
+  synchronized(this) { }
+}
+```
+
+O podemos sincronizar sobre un objeto compartido por varias instancias.
+
+```java
+public synchronized void metodo() {
+  synchronized(object) { }
+}
+```
+
+Hay que usar variables de tipo `volatile` para que no se omitan condiciones que puedan ser cambiadas a lo largo de la ejecución por otros procesos.
+
+- `wait()`: indicates to the current thread to abandone the mutual exclusion (the lock). The thread goes to the wait set until it is awakened by another thread through notify() or notifyAll().  
+- `notify()`: An arbitrary thread is selected from the wait set by the scheduler to go to the ready state.  
+- `notifyAll()`: All the waiting threads in the wait set go to the ready state.  
+
+Estos tres métodos deben llamarse en métodos que estén sincronizados para asegurar que funcionen correctamente. Por ejemplo:
+
+```java
+synchronized void doWhenTrue() {
+  while(!condition)
+    try {
+      wait();
+    } catch (InterruptedException e) { }
+    //SC
+}
+
+synchronized void setTrue() {
+  condition = true;
+  notify(); //or notifyAll();
+}
+```
+
+#### Más sobre Threads en Java
+
+- Llamadas anidadas a monitores.
+- Autothreads (se crean y empiezan a correr en su propio constructor).
+- Prioridades. Podemos asignar prioridades a los hilos en Java para que tengan preferencia.
+- Daemons. Es un hilo que hace tareas de fondo. Tiene la prioridad más baja y un hilo se puede declarar como daemon con `setDaemon(true)` antes de iniciarlo. El recolector de basura de Java es un ejemplo de daemon.
+
+### Monitores
+
+Es una variable accesible solo por sus métodos, que permitirán bloquear procesos que no pueden seguir su ejecución dentro del monitor, y desbloquearlos cuando la situación que provocó su bloqueo ya no se dé. Implementa una cola.
+
+- `await()`. Se bloquea.
+- `signal()`. Desbloquear y continuar.
+- `empty()`
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class Buffer {
+    final Lock candado = new ReentrantLock(true);
+    final Condition lleno = candado.newCondition();
+    final Condition vacio = candado.newCondition();
+    int numActual;
+    int capacidad;
+
+    @Override
+    public void poner() throws InterruptedException {
+        candado.lock();
+        try {
+            while (numActual == capacidad) lleno.await();
+            numActual++;
+            vacio.signal();
+        } finally {
+            candado.unlock();
+        }
+    }
+
+    @Override
+    public void coger() throws InterruptedException {
+        candado.lock();
+        try {
+            while (numActual == 0) vacio.await();
+            numActual--;
+            lleno.signal();
+        } finally {
+            candado.unlock();
+        }
+    }
+}
+```
+
+Hay también un monitor específico para Lectores/Escritores.
+
+```java
+import java.util.concurrent.locks.*;
+public class Buffer {
+  ReadWriteLock mutex = new ReentrantReadWriteLock();
+  public void escribir (int elemento) {
+    mutex.writeLock().lock();
+    try {
+      /* s.c. */
+    }
+    finally
+      mutex.writeLock().unlock();
+  }
+  public int leer() {
+    mutex.readLock().lock();
+    try {
+      /* s.c. */
+    }
+    finally
+      mutex.readLock().unlock();
+  }
+}
+```
+
+#### Semántica de la operación signal
+
+- **Desbloquear y continuar (DC)**. Se desbloquea a un proceso de la cola de condición, pero se sigue ejecutando el método del proceso desbloqueador. `While not B do c.await();`
+- **Retorno forzado (DR)**. Se desbloquea a un proceso de la cola de condición y el desbloqueador sale inmediatamente del monitor, terminando la ejecución del método. Nos aseguramos de que la condición no cambia. `If not B do c.await();`
+- **Desbloquear y esperar (DE)**. El desbloqueador cede el monitor al proceso desbloqueado. El desbloqueador se queda en la cola del monitor. Nos aseguramos de que la condición no cambia. `If not B do c.await();`
+- **Desbloquear y espera urgente (DU)**. Cada monitor llevará asociada una cola de cortesía. Cuando un proceso hace signal, cede la exclusión mutua al proceso desbloqueado y se queda en la cola de cortesía. `If not B do c.await();`  
+
+- El que tiene mayor coste de programación es el retorno forzado (DR).
+- Los más ineficientes son DE y DU por los cambios de contexto al hacer signal y abandonar el monitor. En menor medida DC por el while.
+
+### Semáforos
+
+Están formados por un contador y una cola de procesos. Sus métodos son:
+
+- `acquire(s)`. Si s>0: s--; Si no: desbloquear proceso.
+- `release(s)`. Si hay procesos bloqueados: desbloquear uno. Si no: s++;
+- `init(s, valorInicial)`. s = valorInicial.
+
+```java
+public class SemaforoParaMoteros {
+    Semaphore[] tropaMoteros;
+    Semaphore mutex;
+    Semaphore todosListos;
+    int numeroMoteros;
+    int cont;
+
+    SemaforoParaMoteros(int _numeroMoteros) {
+        cont = 0;
+        numeroMoteros = _numeroMoteros;
+        mutex = new Semaphore(1);
+        todosListos = new Semaphore(1);
+        
+        tropaMoteros = new Semaphore[numeroMoteros];
+
+        for (int i = 0; i < numeroMoteros; i++) {
+            tropaMoteros[i] = new Semaphore(0);
+        }
+    }
+
+    public void esperaAlResto(int i) {
+        try {
+            mutex.acquire();
+            cont++;
+
+            if (cont < numeroMoteros) {
+                mutex.release();
+                tropaMoteros[i].acquire();
+            } else {
+                mutex.release();
+                llegoLaPlantillaCompleta();
+            }
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void llegoLaPlantillaCompleta() throws InterruptedException {
+        for (int i = 0; i < numeroMoteros; i++) {
+            tropaMoteros[i].release();
+        }
+    }
+}
+```
+
+1. Es un mecanismo de **bajo nivel**, no estrucutrado, que fácilmente lleva a errores transitorios.
+2. No se puede restringir el tipo de operaciones realizadas sobre los recursos.
+3. Puede haber fallos humanos si se **olvida** incluir todas las sentencias que hagan referencia a los objetos compartidos en las secciones críticas.
+4. Es difícil **identificar** el propósito de un acquire o release de forma aislada, ya que se usan tanto para la exclusión mutua como para la condición de sincronización.
+5. El código es muy **disperso**, lo que provoca que sea difícil de mantener.  
+
+Los monitores tienen la misma capacidad de expresión que los semáforos: cualquier problema que solucionemos con semáforos también podríamos solucionarlo con monitores.
 
 ### Estructuras de datos concurrentes
 
-//TODO
+#### Non-blocking data structures
+
+Cuando las operaciones de inserción y borrado no se puedan hacer inmediatamente, devolverán un valor especial o lanzarán una excepción.
+
+- Queue. Estructura de datos lineal de tipo FIFO. Operaciones básicas: add(), remove(), element()
+- Deque. Estructura de datos lineal que permite insertar y eliminar elementos a ambos lados de la estructura. Operaciones básicas: addFirst(), addLast(), removeFirst(), removeLast()  
+
+#### Blocking data structures
+
+Cuando las operaciones de inserción y borrado no se pueden hacer inmediatamente, el hilo será bloqueado hasta que se pueda hacer la operación.
+
+- BlockingQueue (LinkedBlockingQueue)
+- BlockingDeque
+- ConcurrentMap
+- TransferQueue
+
+Las estructuras bloqueantes añaden a las clases anteriores sus propios métodos para poder realizar los bloqueos:
+
+- BlockingQueue: put(), take()
+- BlockingDeque: putFirst(), putLast(), takeFirst(), takeLast()
+
+En la clase `SynchronousQueue<E>` cada operación de inserción debe esperar a su correspondiente eliminación y viceversa. No necesita capacidad interna (ni capacidad) y esta cola no admite elementos nulos.
+
+```java
+public class Contenedor_LinkedBlockingQueue {
+    LinkedBlockingQueue<Object> l;
+
+    Contenedor_LinkedBlockingQueue(int capacidad) {
+        l = new LinkedBlockingQueue<>(capacidad);
+    }
+
+    @Override
+    public void poner() throws InterruptedException {
+        l.put(new Object());
+    }
+
+    @Override
+    public void coger() throws InterruptedException {
+        l.take();
+    }
+}
+```
 
 ### Mecanismos avanzados de sincronización
 
-//TODO
+```java
+
+```
+
+## Diferencias entre soluciones
+
+- Los semáforos son poco estructurados y los monitores son muy estrucutrados.
+
 
 ## Programación distribuida
 
@@ -210,7 +678,7 @@ Se produce una cita, rendezvous (aka synchronous message passing): la comunicaci
 
 #### Select sentence: Dijkstra, 1975
 
-```
+```java
 select
 RECEIVE (process1, message);
 sentences;
@@ -227,7 +695,7 @@ end select;
 
 #### Selective waiting with guards
 
-```
+```java
 ...
 select
 when condition1 =>
@@ -257,6 +725,7 @@ El emisor envía los datos cuando él quiera y el receptor los recibe cuando le 
 ### Invocación remota aka extended-rendezvous
 
 La comunicación Extended-Rendezvous es una extensión de la comunicación Rendezvous que permite que más de dos procesos se comuniquen entre sí. En este tipo de comunicación, el emisor espera la recepción del mensaje por parte del receptor y una respuesta determinada.  
+
 #### Remote invocation
 
 El término remoto se refiere a otro **proceso**. El cliente y el servidor pueden estar en el mismo contexto y máquina.
