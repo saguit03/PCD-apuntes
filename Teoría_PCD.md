@@ -136,7 +136,7 @@ repeat
   d) v: =sclibre;
   Resto0
 forever
-``` 
+```
 
 Esta solución no es adecuada, ya que dos procesos pueden ejecutar el `while` antes de ejecutar `v: =scocupada;`, lo que provocaría que ambo entren en la sección crítica. **No garantiza la exclusión mutua**.
 
@@ -585,7 +585,7 @@ public class Contenedor_LinkedBlockingQueue {
 }
 ```
 
-## Mecanismos avanzados de sincronización
+## Mecanismos avanzados de creación de threads
 
 ### Executor
 
@@ -603,12 +603,222 @@ executor.execute(() -> {
     //whatever
 });
 
+Future<Integer> numero = executor.submit(() -> {
+    int cont = 0;
+    for (int i = 0; i<n; i++) {
+        cont ++;
+    }
+    return cont;
+});
+
+executor.shutdown();
+try {
+    executor.awaitTermination(1, TimeUnit.MINUTES);
+} catch (InterruptedException e) {
+    System.out.println("Error en awaitTermination");
+}
+
+Integer num = numero.get();
+
 ```
 
-## Diferencias entre soluciones
+`Callable` permite implementar Threads que devuelven un resultado, que obtendremos con la clase `Future`.
 
-- Los semáforos son poco estructurados y los monitores son muy estrucutrados.
+### ForkJoin
 
+`ForkJoinPool` es un tipo especial de Executor, con el que se diferencia por el algoritmo de robo de trabajo (work-stealing). Cuando una tarea está esperando a la finalización de las subtareas, busca otras tareas que no se hayan ejecutado y las comienza a ejecutar; aprovechando al máximo el tiempo de ejecución y, por tanto, mejorando su rendimiento.  
+Implementa la interfaz `ExecutorService` y el algoritmo de robo de trabajo, maneja los hilos e informa del estado de las tareas y su ejecución.  
+
+```pseudo
+If (problem size > default size){
+  tasks=divide(task);
+  execute(tasks);
+} else {
+  resolve problem using another
+  (simple) algorithm;
+}
+```
+
+`ForkJoinTask` es  la clase base para las tareas e implementa las operaciones de `fork()` y `join()`. Normalmente usaremos:
+
+- `RecursiveAction` para tareas que no devuelven resultados.
+- `RecursiveTask` para tareas que devuelven un resultado.
+
+```java
+public class RecursivePedido_FJ extends RecursiveTask<List<Pedido>> {
+    static Integer iter = 0;
+    final int casoTrivial = 10;
+    final double precioMinimo = 12;
+    List<Pedido> pedidoOriginal, retornoPedido;
+
+    public RecursivePedido_FJ(List<Pedido> original) {
+        this.pedidoOriginal = original;
+        retornoPedido = new LinkedList<>();
+    }
+
+    public List<Pedido> compute() {
+        iter++;
+        if (pedidoOriginal.size() < casoTrivial) {
+            for (Pedido p : pedidoOriginal) {
+                if (p.getPrecioPedido() > precioMinimo) {
+                    retornoPedido.add(p);
+                }
+            }
+        } else {
+            int mitad = pedidoOriginal.size() / 2;
+            RecursivePedido_FJ subPedidos1 = new RecursivePedido_FJ(pedidoOriginal.subList(0, mitad));
+            RecursivePedido_FJ subPedidos2 = new RecursivePedido_FJ(pedidoOriginal.subList(mitad, pedidoOriginal.size()));
+            invokeAll(subPedidos1, subPedidos2);
+            try {
+                retornoPedido.addAll(subPedidos1.get());
+                retornoPedido.addAll(subPedidos2.get());
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+        return retornoPedido;
+    }
+}
+
+public static void Version6ForkJoin(List<Pedido> lp) {
+  List<Pedido> auxListaPedidos = new LinkedList<>(lp);
+  RecursivePedido_FJ taskPedidos = new RecursivePedido_FJ(auxListaPedidos);
+  ForkJoinPool pool = new ForkJoinPool();
+  pool.execute(taskPedidos);
+  pool.shutdown();
+  try {
+      Traza.traza(ColoresConsola.GREEN_BOLD, 1, "V6-D. FORKJOIN");
+      Traza.traza(ColoresConsola.WHITE_BOLD, 1,
+              Thread.currentThread() + " - Lista de pedidos que superan el precio de " + taskPedidos.getPrecioMinimo() + ": ");
+      taskPedidos.get().stream().parallel().forEach(p -> Traza.traza(ColoresConsola.CYAN_BOLD, 2, p.printConRetorno()));
+  } catch (Exception e) {
+      e.printStackTrace();
+  }
+}
+
+## Mecanismos avanzados de sincronización
+
+### CyclicBarrier
+
+Permite que un conjunto de threads esperen al resto al llegar a un punto de barrera común. La barrera es cíclica porque **puede reutilizarse** tras la liberación de los threads. Soporta un comando `Runnable` opcional que se ejecuta una vez por cada punto de barrera, después de que llegue el último thread, pero antes de que se liberen todos, lo que resulta útil para actualizar datos compartidos antes de continuar con la ejecución.
+
+```java
+
+CyclicBarrier cyclicBarrier = new CyclicBarrier(numeroMoteros, () -> System.out.println("Procesando moteros..."));
+           
+public void esperaAlResto() {
+    try {
+        cyclicBarrier.await();
+    } catch (InterruptedException | BrokenBarrierException e) {
+        e.printStackTrace();
+    }
+}
+```
+
+### CountDownLatch
+
+Permite a uno o más threads esperar a que se realicen una serie de operaciones que se ejecutan en otros threads. Se inicializa con una cuenta (**count**). El método `await()` bloquea al thread actual hasta que el contador llegue a 0 por las invocaciones a `countDown()`, y todos los threads que estaban bloqueados se liberan inmediatamente.  
+
+- La principal diferencia entre `CyclicBarrier` y `CountdownLatch` es que `CyclicBarrier` permite que un conjunto de hilos se esperen entre sí, mientras que `CountdownLatch` permite que uno o más hilos esperen a que un conjunto de tareas se completen.
+- El contador de `CountdownLatch` no se puede restablecer una vez llegado a cero, mientras que el contador de `CyclicBarrier` sí se puede restablecer y reutilizar varias veces.
+
+### Exchanger
+
+Un punto de sincronización donde threads se agrupan por pares e intercambian elementos entre sí. Sirve para intercambiar objetos entre dos hilos utilizando el método `exchange()`. Es como una forma bidireccional de SynchronousQueue. Pueden ser útiles en aplicaciones de algoritmos genético y pipelines. Solo se pueden intercambiar objetos del mismo tipo.
+
+```java
+import java.util.concurrent.Exchanger;
+
+public class Main {
+  public static void main(String[] args) {
+    Exchanger<String> exchanger = new Exchanger<String>();
+    new Thread(new FirstThread(exchanger)).start();
+    new Thread(new SecondThread(exchanger)).start();
+  }
+}
+
+class FirstThread implements Runnable {
+  private String message;
+  private Exchanger<String> exchanger;
+
+  public FirstThread(Exchanger<String> exchanger) {
+    this.exchanger = exchanger;
+    message = "Hello World";
+  }
+
+  public void run() {
+    try {
+      message = exchanger.exchange(message);
+      System.out.println("First Thread received: " + message);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+  }
+}
+
+class SecondThread implements Runnable {
+  private String message;
+  private Exchanger<String> exchanger;
+
+  public SecondThread(Exchanger<String> exchanger) {
+    this.exchanger = exchanger;
+    message = "Goodbye World";
+  }
+
+  public void run() {
+    try {
+      message = exchanger.exchange(message);
+      System.out.println("Second Thread received: " + message);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+  }
+}
+```
+
+### Phaser
+
+Se utiliza cuando varias tareas concurrentes se dividen en pasos: `Phaser` permite sincronizar los hilos al final de cada paso, de tal forma que ningún hilo comience con el siguiente hasta que todos hayan terminado el anterior.
+
+```java
+import java.util.concurrent.Phaser;
+
+public class Main {
+  public static void main(String[] args) {
+    int nproc = Runtime.getRuntime().availableProcessors();
+    ThreadPoolExecutor ex = (ThreadPoolExecutor)Executors.newFixedThreadPool(nproc);
+    for (int i=0;i<nproc;i++) {
+      Task t = new Task (i, p, nproc);
+      ex.execute(t);
+    }
+    ex.shutdown();
+    try {
+      ex.awaitTermination(1, TimeUnit.DAYS);
+    } catch (InterruptedException e) {e.printStackTrace();}
+    // This message will be the last one to be printed
+    System.out.println ("Fin");
+  }
+}
+
+class Task implements Runnable {
+  private i;
+  private Phaser phaser;
+
+  public FirstThread(Phaser phaser, int i) {
+    this.i = i;
+    this.phaser = phaser;
+  }
+
+  public void run() {
+    System.out.println("Thread "+i+" - Phase One");
+    phaser.arriveAndAwaitAdvance(); // Waiting for all the threads to finish Phase 1
+    System.out.println("Thread "+i+" - Phase Two");
+    phaser.arriveAndAwaitAdvance(); // Waiting for all the threads to finish Phase 2
+    System.out.println("Thread "+i+" - Phase Three");
+    phaser.arriveAndAwaitAdvance(); // It doesn't wait for the others
+  }
+}
+```
 
 ## Programación distribuida
 
@@ -616,19 +826,195 @@ executor.execute(() -> {
 
 ### Lambdas
 
-//TODO
+Una expresión lambda se compone de:
+
+- Listado de parámetros separados por comas y encerrados en paréntesis. Por ejemplo: (a,b).
+- El símbolo de flecha hacia la derecha: ->
+- Un cuerpo que puede ser un bloque de código encerrado entre llaves o una sola expresión.
+
+```java
+(int a, int b) -> { System.out.println(a + b); return a + b; };
+
+//Función lambda que inicializa la tramitación de cada pedido
+executor.execute(() -> {
+    restaurante.tramitarPedido(p, latch);
+    try {
+        Thread.sleep(0);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+});
+```
+
+### Interfaces funcionales comunes
+
+- `Predicate`. Su método `test` devuelve un booleano: `boolean test (T t)`-
+- `Filter`. Devuelve una lista con todos los elementos que cumplen una determinada condición.
+- `Consumer`. Acepta un parámetro genérico y no devuelve nada. Su método es `void accept(T)`.
+- `Function`. Recibe un parámetro de un determinado tipo y retorna un resultado de tipo diferente (convierte un dato de un tipo en otro tipo diferente). Su método es `R apply (T)`.
 
 ### Streams paralelos
 
-//TODO
+Un stream es una **secuencia** de elementos pensado para **cálculos** más que para datos. Consumen de una **fuente** no modificable que proporciona los datos (ficheros, colecciones), y van consumiendo/procesando los nuevos elementos. Puede haber **encadenamiento** de operaciones, cada iteración es **interna** y es fácilmente **paralelizable**, pero son recorribles solo una vez.  
+
+Existen dos tipos de operaciones sobre streams: **intermedias** y **terminales**. Las primeras devuelven un stream y se pueden concatenar (es el caso de `filter` y `map`). Las terminales producen un resultado (el caso de `collect`).  
+
+Algunas operaciones de streams son:
+
+- filter()
+- map()
+- skip(n)
+- limit(n)
+- forEach()
+- anyMatch()
+- noneMatch()
+- allMatch()
+- findAny()
+- findFirst()
+- reduce()
+- sorted()
+- **iterate**()
+- **range**()
+
+```java
+```
+
+En la medida de lo posible, al trabajar con streams, debemos usar lo que se denominan funciones sin estado o bien que el estado sea inmutable, es decir, no pueda ser cambiado por ningún thread. En nuestro caso add es una función con estado que además puede ser cambiado (se dice que es mutable). Hay que huir de esas situaciones.  
+
+- A veces no es mejor usar streams paralelos. Para una pequeña cantidad de datos, el coste adicional por el proceso de paralelización no compensa.
+- Algunas operaciones funcionan mejor en un stream paralelo que en uno secuencial, y viceversa.
+- Cuidado con el boxing/unboxing.
+- El **coste computacional** ha de ser considerado. Con N siendo la cantidad de elementos a procesar y Q el coste aproximado de procesar cada elemento a través del stream, el producto de N * Q da una estimación cualitativa aproximada de este coste. Un valor más alto para Q implica una mejor oportunidad de obtener buen rendimiento cuando se utiliza un stream paralelo.
 
 ### Observables y Observadores
 
-//TODO
+- La **clase** `Observable` tiene el método `subscribe()`.
+- La **interfaz** `Observer` tiene los métodos `onNext()`, `onError()`, `onComplete()` y `onSubscribe()`.
+
+```java
+// Ejemplos de creación de Observables
+Observable<String> source = Observable.just("Uno", "Dos", "Tres");
+Observable <Book> b = Observable.fromStream (books.stream());
+```
+
+Para que un Observer pueda observar un Observable, debe subscribirse a él invocando el método **subscribe** que recibe por parámetro el objeto Observer.
+
+```java
+source.subscribe (s->System.out.println ("Recibido: "+s),
+  t->t.printStackTrace(),
+  ()->System.out.println ("Hecho"));
+```
+
+También podemos crear un Observable utilizando una lambda que acepta un emisor Observable:
+
+```java
+Observable <String> o2 = Observable.create(emitter -> {
+  emitter.onNext("uno");
+  emitter.onNext("dos");
+  emitter.onNext("tres");
+  emitter.onComplete();
+});
+
+o2.subscribe (s->System.out.println ("Recibido: "+s));
+```
+
+**COLD OBSERVER**  
+Los suscriptores reciben desde el principio todos los valores.
+Es como escuchar un CD, elijo lo que quiero oír desde el principio.
+
+```java
+//COLD OBSERVER
+Observable<String> source = Observable.just("Uno", "Dos", "Tres");
+
+source.subscribe(a -> System.out.println("Observador 1: "+a));
+source.subscribe(a -> System.out.println("Observador 2: "+a.length()));
+```
+
+**HOT OBSERVER**  
+Es como la radio: me pierdo lo que haya habido antes de mi subscripción.
+
+```java
+//HOT OBSERVER
+ConnectableObservable<String> source2 = Observable.just("Uno", "Dos", "Tres").publish();
+
+source2.subscribe(a -> System.out.println("Observador 1: "+a));
+source2.subscribe(a -> System.out.println("Observador 2: "+a.length()));
+source2.connect(); //Desde aquí se mandan TODOS los datos a la vez a los observadores
+
+ConnectableObservable<Long> source3 = Observable.interval(1, TimeUnit.SECONDS).publish();
+
+source3.subscribe(a -> System.out.println("Observador 1-interval: "+a));
+source3.subscribe(a -> System.out.println("Observador 2-interval: "+a.length()));
+source3.connect(); //Desde aquí se mandan TODOS los datos a la vez a los observadores
+sleep(3000);
+source3.subscribe(a->System.out.println("Observador 3-interval: "+a)); //Este es el que pone la radio tarde y se pierde parte del programa
+sleep(3000);
+```
+
+En el caso de interval, se crea un hilo aparte.
+
+```java
+Observable.interval(1, TimeUnit.SECONDS).subscribe(s->System.out.println (Thread.currentThread()+ " "+s ));
+System.out.println (Thread.currentThread()+ "En el main ");
+sleep(7000); // paramos el hilo principal
+```
 
 ### Concurrencia en Programación Reactiva
 
-//TODO
+```java
+//Lanzando cada elemento en un thread
+Observable.range(1, 10)
+  .flatMap(i -> Observable.just(i)
+  .subscribeOn(Schedulers.computation())
+  .map(i2->intenseCalculation (i2)))
+  .subscribe(i -> System.out.println("Current thread: "+
+    Thread.currentThread() +" Recibido: " + i + " "+LocalTime.now()));
+sleep (12000);
+```
+
+### Tipos de Schedulers
+
+- `Schedulers.computation()`. Crea y devuelve un scheduler para cómputos. El número de threads depende del procesador. Se permite un thread por procesador, es la mejor opción para bucles o recursividad.
+- `Schedulers.io()`. Crea y devuelve un scheduler para entrada-salida (IO-bound work). Pueden usarse más threads si fuera necesario.
+- `Schedulers.newThread()`. Crea y devuelve un scheduler que crea un nuevo thread para cada unidad de trabajo.
+- `Schedulers.trampoline()`. Crea y devuelve un scheduler que pone trabajo en la cola del thread actual para ejecutar después de que el trabajo actual se complete.
+- `Schedulers.from(java.util.concurrent.Executor executor)`. Convierte un Executor en un nuevo scheduler.
+
+```java
+public static void main(String[] args) {
+  int numberOfThreads = 20;
+  ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads);
+  Scheduler scheduler = Schedulers.from(executor);
+  Observable.just("Alpha", "Beta", "Gamma", "Delta", "Epsilon")
+    .subscribeOn(scheduler)
+    .doFinally(executor::shutdown)
+    .subscribe(System.out::println);
+}
+```
+
+### observeOn
+
+Con `observeOn` se puede cambiar de scheduler. Aplica a la cadena que viene detrás de `observeOn`. Con `subscribeOn` da igual dónde se ponga, con `observeOn` no da igual.
+
+```java
+Observable.just("long", "longer", "longest")
+  .doOnNext(System.out::println)
+  .subscribeOn(Schedulers.io())
+  .map(String::length)
+  .observeOn(Schedulers.computation())
+  .filter (i->(i > 6))
+  .subscribe (length -> System.out.println("item length "+length));
+
+Observable. just("long", "longer", "longest")
+  .doOnNext( i->System.out.println ( "Current Thread: " + Thread.currentThread()+" "+i))
+  .subscribeOn(Schedulers. io())
+  .map(String::length)
+  .doOnNext( i->System.out.println ( "Current Thread: " +Thread.currentThread()+" "+i))
+  .flatMap(j->Observable. just(j).observeOn(Schedulers. computation())
+  .doOnNext( k->System.out.println (Thread. currentThread()+" "+k))
+  .filter (i->(i > 6)))
+  .subscribe ( length -> System. out.println("Current thread: " + Thread.currentThread()+" length " +length));
+```
 
 ## Tema 5. Mecanismos de paso de mensaje
 
