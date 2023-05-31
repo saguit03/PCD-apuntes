@@ -1123,6 +1123,8 @@ El emisor envía los datos cuando él quiera y el receptor los recibe cuando le 
 ### Invocación remota aka extended-rendezvous
 
 La comunicación Extended-Rendezvous es una extensión de la comunicación Rendezvous que permite que más de dos procesos se comuniquen entre sí. En este tipo de comunicación, el emisor espera la recepción del mensaje por parte del receptor y una respuesta determinada.  
+  
+La invocación remota es un modelo de comunicación **síncrona** que se basa en intercambio de mensajes y **bidireccional**.
 
 #### Remote invocation
 
